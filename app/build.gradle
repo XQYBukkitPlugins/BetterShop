@@ -36,6 +36,8 @@ processResources {
     from(sourceSets.main.resources.srcDirs) {
         include 'plugin.yml'
     }
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    // 或者使用 EXCLUDE, WARN, FAIL
 }
 
 // 构建信息
