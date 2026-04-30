@@ -2,3 +2,7 @@ name: XQYServerCore
 version: 1.0.0
 main: com.xqy.core.Main
 api-version: 1.13
+
+commands:
+  bettershop:
+    alias: ['bc']
