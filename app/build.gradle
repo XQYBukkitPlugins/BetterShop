@@ -1,0 +1,49 @@
+plugins {
+    id 'java'
+    id 'application'  // 如果 gradle init 生成了，可以移除
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+repositories {
+    mavenCentral()
+    maven {
+        name = "papermc-repo"
+        url = "https://repo.papermc.io/repository/maven-public/"
+    }
+}
+
+dependencies {
+    // 使用 Paper API（包含 Bukkit API）
+    compileOnly "io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT"
+    
+    // 如果需要测试
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
+}
+
+// 确保 plugin.yml 被复制到 jar 中
+processResources {
+    from(sourceSets.main.resources.srcDirs) {
+        include 'plugin.yml'
+    }
+}
+
+// 构建信息
+jar {
+    manifest {
+        attributes(
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version
+        )
+    }
+}
