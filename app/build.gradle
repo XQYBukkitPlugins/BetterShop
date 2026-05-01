@@ -1,9 +1,10 @@
 plugins {
     id 'java'
-    id 'application'  // 如果 gradle init 生成了，可以移除
+    id 'application'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'  // 添加 Shadow 插件用于打包
 }
 
-group = 'com.example'
+group = 'com.bettershop'
 version = '1.0.0'
 
 repositories {
@@ -12,15 +13,19 @@ repositories {
         name = "papermc-repo"
         url = "https://repo.papermc.io/repository/maven-public/"
     }
+    // 添加 Vault 的仓库
+    maven {
+        name = "jitpack.io"
+        url = "https://jitpack.io"
+    }
 }
 
 dependencies {
     // 使用 Paper API（包含 Bukkit API）
     compileOnly "io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT"
     
-    // 如果需要测试
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.9.2'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    // 添加 Vault API - 使用 compileOnly，默认不打包
+    compileOnly 'com.github.MilkBowl:VaultAPI:1.7'
 }
 
 java {
@@ -37,15 +42,82 @@ processResources {
         include 'plugin.yml'
     }
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
-    // 或者使用 EXCLUDE, WARN, FAIL
 }
 
-// 构建信息
+// 普通 JAR - 不打包 Vault（标准版本）
 jar {
+    archiveClassifier = 'standalone'  // 生成 bettershop-1.0.0-standalone.jar
     manifest {
         attributes(
             'Implementation-Title': project.name,
             'Implementation-Version': project.version
         )
+    }
+    // 确保不包含任何依赖
+    from sourceSets.main.output
+}
+
+// Shadow JAR - 打包 Vault 到 jar 中（不推荐，但按你的要求实现）
+shadowJar {
+    archiveClassifier = 'shaded'  // 生成 bettershop-1.0.0-shaded.jar
+    manifest {
+        attributes(
+            'Implementation-Title': project.name,
+            'Implementation-Version': project.version
+        )
+    }
+    
+    // 将 Vault 打包进去（需要将 compileOnly 改为可打包的状态）
+    // 方法是临时将 Vault 添加到 runtimeClasspath
+    configurations = [project.configurations.runtimeClasspath]
+    
+    // 【重要】重定位 Vault 的包名，避免与服务器上的 Vault 插件冲突
+    relocate('net.milkbowl.vault', 'com.bettershop.libs.vault')
+    
+    // 最小化打包，排除不需要的文件
+    minimize()
+    
+    // 确保 plugin.yml 正确包含
+    from sourceSets.main.output
+}
+
+// 为了让 shadowJar 能包含 Vault，需要临时添加一个依赖配置
+// 在 shadowJar 执行前，将 Vault 添加到 runtimeClasspath
+configurations {
+    shadowRuntime
+}
+
+dependencies {
+    // 这个配置专门给 shadowJar 使用
+    shadowRuntime 'com.github.MilkBowl:VaultAPI:1.7'
+}
+
+// 让 shadowJar 使用包含 Vault 的配置
+shadowJar {
+    configurations = [project.configurations.shadowRuntime]
+    // ... 其他配置同上
+}
+
+// 可选：创建一个任务同时生成两个版本
+task buildBoth {
+    dependsOn jar, shadowJar
+    description = '构建两个版本：standalone（外部Vault）和 shaded（打包Vault）'
+}
+
+// 显示构建信息
+tasks.build {
+    finalizedBy 'printOutput'
+}
+
+task printOutput {
+    doLast {
+        println "=========================================="
+        println "构建完成！生成的文件："
+        println "1. 标准版本（需要服务器安装 Vault）: ${jar.archiveFile.get().asFile.name}"
+        println "2. 打包版本（包含 Vault，不推荐使用）: ${shadowJar.archiveFile.get().asFile.name}"
+        println "=========================================="
+        println "⚠️  警告：打包 Vault 的版本可能导致类冲突！"
+        println "    建议使用 standalone 版本，并要求服务器安装 Vault 插件。"
+        println "=========================================="
     }
 }

@@ -1,7 +1,8 @@
-name: XQYServerCore
+name: XQYBetterShop
 version: 1.0.0
-main: com.xqy.core.Main
+main: com.betershop.Main
 api-version: 1.13
+depends: [Vault]
 
 commands:
   bettershop:

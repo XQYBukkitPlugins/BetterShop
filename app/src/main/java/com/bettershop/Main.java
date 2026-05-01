@@ -1,26 +1,15 @@
-package com.betershop.Main;
+package com.bettershop.Main;
 
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+
+import net.milkbowl.vault.economy.Economy;
+import org.bukkit.plugin.RegisteredServiceProvider;
 
 import java.util.logging.Level;
 
 public class Main extends JavaPlugin {
     
-    // 货币政策计算器配置
-    // private static final double T_0 = 0.015;      // 基准交易手续费率 1.5%
-    // private static final double T_MIN = 0.001;    // 最低手续费率 0.1%
-    // private static final double R_D0 = 0.03;      // 基准存款利率 3%
-    // private static final double R_L0 = 0.06;      // 基准贷款利率 6%
-    // private static final double ALPHA = 0.2;      // 流通占比目标 20%
-    
-    // 调节系数
-    // private static final double COEF_T = 0.3;      // 交易手续费率调节系数
-    // private static final double COEF_RD_C = 0.2;   // 存款利率-储蓄偏差系数
-    // private static final double COEF_RD_B = 0.1;   // 存款利率-总量偏差系数
-    // private static final double COEF_RL_C = 0.4;   // 贷款利率-流通偏差系数
-    // private static final double COEF_RL_B = 0.2;   // 贷款利率-总量偏差系数
-
     // 基准参数
     private static final double T_0 = 0.01;         // 基准手续费 1%
     private static final double T_MIN = 0.001;      // 最低 0.1%
@@ -36,6 +25,8 @@ public class Main extends JavaPlugin {
     // 调节系数（总量偏差的影响）
     private static final double COEF_RD_B = 0.15;   // 总量偏差→存款利率
     private static final double COEF_RL_B = 0.25;   // 总量偏差→贷款利率
+
+    private Economy economy;
     
     // 计算结果缓存
     private volatile PolicyResult cachedResult;
@@ -44,6 +35,15 @@ public class Main extends JavaPlugin {
     @Override
     public void onEnable() {
         getLogger().info("更好的商店插件已启用！");
+
+        // 初始化 Vault 经济系统
+        if (!setupEconomy()) {
+            getLogger().severe("未找到经济系统插件！插件将被禁用。");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        
+        getLogger().info("已初始化经济系统: " + economy.getName());
         
         // 启动货币政策计算的后台线程
         startMonetaryPolicyCalculator();
@@ -55,6 +55,38 @@ public class Main extends JavaPlugin {
     @Override
     public void onDisable() {
         getLogger().info("更好的商店插件已禁用！");
+    }
+
+    /**
+     * 设置 Vault 经济系统
+     * @return 是否成功挂钩经济系统
+     */
+    private boolean setupEconomy() {
+        // 检查 Vault 插件是否存在
+        if (getServer().getPluginManager().getPlugin("Vault") == null) {
+            getLogger().severe("Vault 插件未找到！");
+            return false;
+        }
+        
+        // 获取经济服务提供者
+        RegisteredServiceProvider<Economy> rsp = 
+            getServer().getServicesManager().getRegistration(Economy.class);
+        
+        if (rsp == null) {
+            getLogger().severe("未找到任何经济系统实现！");
+            return false;
+        }
+        
+        economy = rsp.getProvider();
+        return economy != null;
+    }
+
+    /**
+     * 获取经济系统实例
+     * @return Economy 对象，如果未初始化则返回 null
+     */
+    public Economy getEconomy() {
+        return economy;
     }
     
     /**
@@ -132,12 +164,32 @@ public class Main extends JavaPlugin {
     }
     
     /**
-     * 获取当前货币总量
-     * 实际使用时应该从Vault或其他经济插件获取
+     * 获取当前货币总量（使用 Vault）
+     * 计算服务器中所有玩家的总货币量
      */
     private double getCurrentMoneySupply() {
-        // 示例实现，实际应从经济系统获取
-        return 1000.0;
+        if (economy == null) {
+            getLogger().warning("经济系统未就绪，使用默认值");
+            return 1000.0;
+        }
+        
+        double totalMoney = 0.0;
+        // 遍历所有在线玩家，累加余额
+        // 注意：如果需要统计所有玩家（包括离线），需要使用其他方法
+        for (org.bukkit.entity.Player player : getServer().getOnlinePlayers()) {
+            totalMoney += economy.getBalance(player);
+        }
+        
+        // 如果在线玩家太少，可以使用配置文件中保存的历史总量
+        if (totalMoney < 0.01 && getConfig().contains("economy.lastTotalMoney")) {
+            totalMoney = getConfig().getDouble("economy.lastTotalMoney");
+        }
+        
+        // 保存当前总量到配置
+        getConfig().set("economy.lastTotalMoney", totalMoney);
+        saveConfig();
+        
+        return totalMoney;
     }
     
     /**
