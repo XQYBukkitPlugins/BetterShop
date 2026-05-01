@@ -5,8 +5,15 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.plugin.RegisteredServiceProvider;
+import org.bukkit.OfflinePlayer;
+import org.bukkit.Bukkit;
 
 import java.util.logging.Level;
+import java.io.File;
+import java.util.UUID;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
 
 public class Main extends JavaPlugin {
     
@@ -159,18 +166,73 @@ public class Main extends JavaPlugin {
      * 实际使用时应该从配置或经济系统获取
      */
     private double getBenchmarkMoney() {
-        // 示例实现，实际应从配置读取
         return getConfig().getDouble("economy.benchmark", 1000.0);
     }
     
-    /**
-     * 获取当前货币总量（使用 Vault）
-     * 计算服务器中所有玩家的总货币量
-     */
-    private double getCurrentMoneySupply() {
-        return 1000.0;
+/**
+ * 获取当前货币总量（使用 Vault）
+ * 计算服务器中所有玩家的总货币量
+ * 可以在异步线程调用，会阻塞直到计算完成
+ */
+private double getCurrentMoneySupply() {
+    // 1. 异步线程读取 playerdata 目录获取 UUID 列表
+    File worldFolder = getServer().getWorlds().get(0).getWorldFolder();
+    File playerDataFolder = new File(worldFolder, "playerdata");
+    File[] playerFiles = playerDataFolder.listFiles((dir, name) -> name.endsWith(".dat"));
+    
+    if (playerFiles == null || playerFiles.length == 0) {
+        return 0.0;
     }
     
+    // 2. 提取 UUID 列表
+    List<UUID> uuids = new ArrayList<>(playerFiles.length);
+    for (File file : playerFiles) {
+        try {
+            uuids.add(UUID.fromString(file.getName().replace(".dat", "")));
+        } catch (IllegalArgumentException ignored) {}
+    }
+    
+    // 3. 分片处理 + 等待完成
+    CountDownLatch latch = new CountDownLatch(1);
+    double[] result = new double[1];
+    
+    double[] currentTotal = new double[1]; // 用于累加结果
+    currentTotal[0] = 0.0;
+    processBatch(uuids, 0, currentTotal, latch, result);
+    
+    try {
+        latch.await();
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return 0.0;
+    }
+    return result[0];
+}
+
+private void processBatch(List<UUID> uuids, int index, double[] currentTotal, 
+                          CountDownLatch finalLatch, double[] result) {
+    if (index >= uuids.size()) {
+        result[0] = currentTotal[0];
+        finalLatch.countDown();
+        return;
+    }
+    
+    int batchSize = 50; // 每批 50 个玩家，约 25-50ms
+    int endIndex = Math.min(index + batchSize, uuids.size());
+    
+    Bukkit.getScheduler().runTask(this, () -> {
+        double[] batchTotal = currentTotal;
+        for (int i = index; i < endIndex; i++) {
+            OfflinePlayer player = Bukkit.getOfflinePlayer(uuids.get(i));
+            if (economy.hasAccount(player)) {
+                batchTotal[0] += economy.getBalance(player);
+            }
+        }
+        // 下一批延迟 1 tick
+        Bukkit.getScheduler().runTaskLater(this, () -> 
+            processBatch(uuids, endIndex, batchTotal, finalLatch, result), 1L);
+    });
+}
     /**
      * 获取流通货币量
      * 流通货币定义： 商店中成交的货币量*权重a + 买单中等待交易的货币量*权重b
