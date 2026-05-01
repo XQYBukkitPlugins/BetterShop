@@ -168,32 +168,12 @@ public class Main extends JavaPlugin {
      * 计算服务器中所有玩家的总货币量
      */
     private double getCurrentMoneySupply() {
-        if (economy == null) {
-            getLogger().warning("经济系统未就绪，使用默认值");
-            return 1000.0;
-        }
-        
-        double totalMoney = 0.0;
-        // 遍历所有在线玩家，累加余额
-        // 注意：如果需要统计所有玩家（包括离线），需要使用其他方法
-        for (org.bukkit.entity.Player player : getServer().getOnlinePlayers()) {
-            totalMoney += economy.getBalance(player);
-        }
-        
-        // 如果在线玩家太少，可以使用配置文件中保存的历史总量
-        if (totalMoney < 0.01 && getConfig().contains("economy.lastTotalMoney")) {
-            totalMoney = getConfig().getDouble("economy.lastTotalMoney");
-        }
-        
-        // 保存当前总量到配置
-        getConfig().set("economy.lastTotalMoney", totalMoney);
-        saveConfig();
-        
-        return totalMoney;
+        return 1000.0;
     }
     
     /**
      * 获取流通货币量
+     * 流通货币定义： 商店中成交的货币量*权重a + 买单中等待交易的货币量*权重b
      * 实际使用时可以通过玩家持有货币、商店交易额等计算
      */
     private double getCirculatingMoney() {
